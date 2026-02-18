@@ -87,13 +87,13 @@ timer_elapsed (int64_t then)
 /** Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void
-timer_sleep (int64_t ticks) 
-{
-  int64_t start = timer_ticks ();
+timer_sleep (int64_t ticks)
+{//CURRENTLY IMPLEMENTS BUSY WAITING. FIRST TASK IS TO MAKE IT USE A BETTER METHOD. idea - use lock system (semaphores, though still lower level could be a good way. Look into this)
+  int64_t start = timer_ticks();//gets the number of ticks that have currently passed to serve as the start time
 
-  ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  ASSERT (intr_get_level () == INTR_ON);//will throw an error if interrupts are on
+  while (timer_elapsed (start) < ticks)//use timer_elapsed() to see how many ticks have passed since the start and loop while it is less than the time to sleep has not elapsed
+    thread_yield();//yields to the CPU but does not put thread to sleep
 }
 
 /** Sleeps for approximately MS milliseconds.  Interrupts must be
