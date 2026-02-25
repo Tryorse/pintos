@@ -100,8 +100,7 @@ void timer_sleep (int64_t ticks)
 
   ASSERT (intr_get_level () == INTR_ON);//will throw an error if interrupts are on
 
-  //QUESTIONS: Is changing the parameters of provided functions allowed? If so, would I need to send it in by reference, or would I not need to
-  //           To know that I implemented this right, do I need every test involving timer_sleep() to pass? Or is it just specific ones?
+  
 
   //NOTE: for info on what to do to test things and info on commands to use, see the lab 1 instructions starting at section 6
 }
