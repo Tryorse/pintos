@@ -3,6 +3,15 @@
 
 #include <round.h>
 #include <stdint.h>
+#include <list.h>
+#include "threads/thread.h"
+
+struct sleepQueueElement {
+    struct list_elem positionIndex;//the list_elem that holds the pointers to the next and previous parts of the lists
+
+    int64_t timestampToWakeAfter;//ticks to wait + ticks currently passed
+    thread* sleepingThread;//the thread that is to wake upon the passing of the timestamp
+};
 
 /** Number of timer interrupts per second. */
 #define TIMER_FREQ 100

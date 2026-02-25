@@ -7,6 +7,8 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
+#include <list.h>
+#include <stdlib.h>
   
 /** See [8254] for hardware details of the 8254 timer chip. */
 
@@ -29,6 +31,10 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
+void timer_sleep (int64_t ticks);
+
+//the elements will be a custom struct that holds a pointer to the thread to be run and an int that acts as a timestamp for how long to wait. (It will be calculated by adding the ticks to wait to the current timestamp) 
+struct list timerSleepQueue;//the queue that will hold the threads that need to sleep for a time
 
 /** Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -37,6 +43,8 @@ timer_init (void)
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+
+  list_init(&timerSleepQueue);
 }
 
 /** Calibrates loops_per_tick, used to implement brief delays. */
@@ -98,27 +106,37 @@ void timer_sleep (int64_t ticks)
   if (ticks <= 0)//if no ticks left, end the timer
     return;
 
-  int64_t start = timer_ticks();//gets the number of ticks that have currently passed to serve as the start time
+  //disable interrupts and save the interrupt state from before the disabling
+  enum intr_level old_level = intr_disable();
 
   ASSERT (intr_get_level () == INTR_ON);//will throw an error if interrupts are on
 
-  //IDEA: timer_interrupt supposedly runs every tick. This means that if it were possible to create a global list or use an existing one in this file and then store the current thread as it goes to sleep, timer_interrupt() could in theory check and awaken the current thread
-  
-  //set how many ticks the struct needs to sleep for
-  //use thread_block() to put the thread to sleep
-  //then in timer_interrupt(), make it check for any threads that have had enough ticks pass and use thread_unblock() on any such threads
- 
-  // while (timer_elapsed(start) < ticks) {
-  //   thread_block();//NOTE: to undo thread_block(), you need to use thread_unblock(&threadToUnblock)//IMPORTANT: need to make sure that this does not take way longer to be woken up than it should b
-  // }
+  //LOGIC: since timer_interrupt() triggers TIMER_FREQ times per second (see timer_init()), keep a global queue of threads that need to wait for a number of ticks. Calculate how long after the current time to awaken and store that in the queue with the corresponding thread. Then have timer_interrupt() check the queue and awaken those that need to be
 
-  
-  //IDEA: use a while loop that checks if enough ticks has passed. The instructions mention that it needs to wait for at least the number of ticks sent in, so overshoots shouldn't be too much of a problem
-  //      in theory, the loop would go on so long as the number of ticks sent in have not been met or passed. Once that ends, it will then let the function end
+  //set the thread's ticks to sleep for to the amount sent in
+  int64_t awakening_timestamp = timer_ticks() + ticks;//calculate the timestamp that the tick needs to awaken after
 
-  //AFTER asking the TA if it sounds right, she suggested that I adjust the frequency. Because I need to be checking frequently enough (Im not entirely sure what that means so I need to look into that)
+  //assign a timestamp to awaken after and then put the thread onto a special waiting queue
+  putThreadOnTimerQueue(awakening_timestamp);
+  //NOTE: to add elements and retrieve them from the Pintos list, you need to add a list_elem object to a struct that will hold what you want to store. Meaning that you will have a struct of some name with all your data to store that will also store the list_elem. When you store though, you MUST send in a pointer to the list_elem. You use list_entry() to retrieve what you stored
+
+  //put thethread to sleep
+  thread_block();//thread_block() will make it so that it can only be awoken by thread_unblock(). That will be done in thread_unblock()
+
+  //reenable interrupts by restoring the interrupt state from before
+  intr_set_level(old_level);
 
   //NOTE: for info on what to do to test things and info on commands to use, see the lab 1 instructions starting at section 6
+}
+
+//takes in the timestamp to awaken the thread after. Assumes you want to put the current thread to sleep
+void putThreadOnTimerQueue(int awakening_timestamp) {//NOTE: assumes that the timer sleep queue was initialized already (in timer_init() as of 2/25/2026)
+  struct sleepQueueElement *element = malloc(sizeof *element);//create the element. Do like this because when the function ends, the element's data will be removed if it is made on this function's stack
+  element->timestampToWakeAfter = awakening_timestamp;//assign the timestamp
+  element->sleepingThread = thread_current();//assign the current thread
+
+  //send in the timer sleep queue and the list_elem of element by reference to add to the end because are implementing list as a queue
+  list_push_back(&timerSleepQueue, &(element->positionIndex));
 }
 
 /** Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -192,8 +210,7 @@ timer_print_stats (void)
 }
 
 /** Timer interrupt handler. */
-static void
-timer_interrupt (struct intr_frame *args UNUSED)
+static void timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();

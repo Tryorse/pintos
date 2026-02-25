@@ -90,6 +90,8 @@ struct thread
     int priority;                       /**< Priority. */
     struct list_elem allelem;           /**< List element for all threads list. */
 
+   //  int ticksToSleepFor;//how many ticks that it should sleep for. As of 2/25/2026, I have only made it so that timer_interrupt uses it so it should not interfere with any test cases
+
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /**< List element. */
 
