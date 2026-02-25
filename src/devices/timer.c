@@ -86,14 +86,37 @@ timer_elapsed (int64_t then)
 
 /** Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
-void
-timer_sleep (int64_t ticks)
+void timer_sleep (int64_t ticks)
 {//CURRENTLY IMPLEMENTS BUSY WAITING. FIRST TASK IS TO MAKE IT USE A BETTER METHOD. idea - use lock system (semaphores, though still lower level could be a good way. Look into this)
-  int64_t start = timer_ticks();//gets the number of ticks that have currently passed to serve as the start time
+  // int64_t start = timer_ticks();//gets the number of ticks that have currently passed to serve as the start time
+
+  // ASSERT (intr_get_level () == INTR_ON);//will throw an error if interrupts are on
+  // while (timer_elapsed (start) < ticks)//use timer_elapsed() to see how many ticks have passed since the start and loop while it is less than the time to sleep has not elapsed
+  //   thread_yield();//yields to the CPU but does not put thread to sleep
+
+  if (ticks <= 0)//if no ticks left, end the timer
+    return;
 
   ASSERT (intr_get_level () == INTR_ON);//will throw an error if interrupts are on
-  while (timer_elapsed (start) < ticks)//use timer_elapsed() to see how many ticks have passed since the start and loop while it is less than the time to sleep has not elapsed
-    thread_yield();//yields to the CPU but does not put thread to sleep
+
+  //QUESTIONS: Is changing the parameters of provided functions allowed? Is a good way to implement timer_sleep using something other than busy waiting the use of semaphores? If so, would I need to send it in by reference, or would I not need to
+
+  //disable interrupts
+  //while the semaphore value is zero
+    //put the thread into the semaphore's waiting queue
+    //put the therad to sleep with thread_block()
+
+  // enum intr_level old_level = intr_disable();//disable interrupts
+
+  // struct thread *cur = thread_current();
+  // cur->wakeup_tick = timer_ticks() + ticks;
+
+  // sema_init(&cur->sleep_sema, 0);
+  // list_push_back(&sleep_list, &cur->sleep_elem);
+
+  // intr_set_level(old_level);
+
+  // sema_down(&cur->sleep_sema);
 }
 
 /** Sleeps for approximately MS milliseconds.  Interrupts must be
