@@ -98,9 +98,25 @@ void timer_sleep (int64_t ticks)
   if (ticks <= 0)//if no ticks left, end the timer
     return;
 
+  int64_t start = timer_ticks();//gets the number of ticks that have currently passed to serve as the start time
+
   ASSERT (intr_get_level () == INTR_ON);//will throw an error if interrupts are on
 
+  //IDEA: timer_interrupt supposedly runs every tick. This means that if it were possible to create a global list or use an existing one in this file and then store the current thread as it goes to sleep, timer_interrupt() could in theory check and awaken the current thread
   
+  //set how many ticks the struct needs to sleep for
+  //use thread_block() to put the thread to sleep
+  //then in timer_interrupt(), make it check for any threads that have had enough ticks pass and use thread_unblock() on any such threads
+ 
+  // while (timer_elapsed(start) < ticks) {
+  //   thread_block();//NOTE: to undo thread_block(), you need to use thread_unblock(&threadToUnblock)//IMPORTANT: need to make sure that this does not take way longer to be woken up than it should b
+  // }
+
+  
+  //IDEA: use a while loop that checks if enough ticks has passed. The instructions mention that it needs to wait for at least the number of ticks sent in, so overshoots shouldn't be too much of a problem
+  //      in theory, the loop would go on so long as the number of ticks sent in have not been met or passed. Once that ends, it will then let the function end
+
+  //AFTER asking the TA if it sounds right, she suggested that I adjust the frequency. Because I need to be checking frequently enough (Im not entirely sure what that means so I need to look into that)
 
   //NOTE: for info on what to do to test things and info on commands to use, see the lab 1 instructions starting at section 6
 }
