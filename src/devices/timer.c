@@ -87,7 +87,8 @@ timer_elapsed (int64_t then)
 /** Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void timer_sleep (int64_t ticks)
-{//CURRENTLY IMPLEMENTS BUSY WAITING. FIRST TASK IS TO MAKE IT USE A BETTER METHOD. idea - use lock system (semaphores, though still lower level could be a good way. Look into this)
+{//CURRENTLY IMPLEMENTS BUSY WAITING. FIRST TASK IS TO MAKE IT USE A BETTER METHOD. idea - use lock system (because should avoid changing the arguments, semaphores would not work since need to send in the semaphore as an argument)
+  //THE BUSY WAITING IMPLEMENTATION
   // int64_t start = timer_ticks();//gets the number of ticks that have currently passed to serve as the start time
 
   // ASSERT (intr_get_level () == INTR_ON);//will throw an error if interrupts are on
@@ -99,24 +100,10 @@ void timer_sleep (int64_t ticks)
 
   ASSERT (intr_get_level () == INTR_ON);//will throw an error if interrupts are on
 
-  //QUESTIONS: Is changing the parameters of provided functions allowed? Is a good way to implement timer_sleep using something other than busy waiting the use of semaphores? If so, would I need to send it in by reference, or would I not need to
+  //QUESTIONS: Is changing the parameters of provided functions allowed? If so, would I need to send it in by reference, or would I not need to
+  //           To know that I implemented this right, do I need every test involving timer_sleep() to pass? Or is it just specific ones?
 
-  //disable interrupts
-  //while the semaphore value is zero
-    //put the thread into the semaphore's waiting queue
-    //put the therad to sleep with thread_block()
-
-  // enum intr_level old_level = intr_disable();//disable interrupts
-
-  // struct thread *cur = thread_current();
-  // cur->wakeup_tick = timer_ticks() + ticks;
-
-  // sema_init(&cur->sleep_sema, 0);
-  // list_push_back(&sleep_list, &cur->sleep_elem);
-
-  // intr_set_level(old_level);
-
-  // sema_down(&cur->sleep_sema);
+  //NOTE: for info on what to do to test things and info on commands to use, see the lab 1 instructions starting at section 6
 }
 
 /** Sleeps for approximately MS milliseconds.  Interrupts must be
