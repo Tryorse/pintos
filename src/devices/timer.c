@@ -31,11 +31,13 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
+bool lowerSleepTime(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED);
+void putThreadOnTimerList(int64_t awakening_timestamp);
 void timer_sleep (int64_t ticks);
 
 //the elements will be a custom struct that holds a pointer to the thread to be run and an int that acts as a timestamp for how long to wait. (It will be calculated by adding the ticks to wait to the current timestamp) 
-struct list timerSleepQueue;//the queue that will hold the threads that need to sleep for a time
-int sleepQueueSize;
+struct list timerSleepList;//the list that will hold the threads that need to sleep for a time. It needs to be ordered with the shortest waits being earlier
+int sleepListSize;
 
 /** Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -45,7 +47,7 @@ timer_init (void)
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
 
-  list_init(&timerSleepQueue);
+  list_init(&timerSleepList);
 }
 
 /** Calibrates loops_per_tick, used to implement brief delays. */
@@ -96,7 +98,7 @@ timer_elapsed (int64_t then)
 /** Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void timer_sleep(int64_t ticks)
-{//CURRENTLY IMPLEMENTS BUSY WAITING. FIRST TASK IS TO MAKE IT USE A BETTER METHOD. idea - use lock system (because should avoid changing the arguments, semaphores would not work since need to send in the semaphore as an argument)
+{
   //THE BUSY WAITING IMPLEMENTATION
   // int64_t start = timer_ticks();//gets the number of ticks that have currently passed to serve as the start time
 
@@ -104,16 +106,15 @@ void timer_sleep(int64_t ticks)
   // while (timer_elapsed (start) < ticks)//use timer_elapsed() to see how many ticks have passed since the start and loop while it is less than the time to sleep has not elapsed
   //   thread_yield();//yields to the CPU but does not put thread to sleep
 
-  if (ticks <= 0)//if no ticks left, end the timer
-    return;
+  // if (ticks <= 0)//if no ticks left, end the timer
+  //   return;
 
-  //LOGIC: since timer_interrupt() triggers TIMER_FREQ times per second (see timer_init()), keep a global queue of threads that need to wait for a number of ticks. Calculate how long after the current time to awaken and store that in the queue with the corresponding thread. Then have timer_interrupt() check the queue and awaken those that need to be
-
-  //ISSUE: when using busy waiting, 5 tests succeed. With my current implementation, only 4 succeed. Need alram-simultaneous to pass. It expects threads that need to sleep for the same amount of time to wake up on the same tick. My code may have an issue with that
+  //LOGIC: since timer_interrupt() triggers TIMER_FREQ times per second (see timer_init()), keep a global list of threads that need to wait for a number of ticks. Calculate how long after the current time to awaken and store that in the queue with the corresponding thread. Then have timer_interrupt() check the queue and awaken those that need to be
+  //       the threads should be ordered in the list with the shortest sleep times being earlier
 
   //NOTE: timer_ticks() disables interrupts during it's process and then reenables them when it is done
   //set the thread's ticks to sleep for to the amount sent in
-  int64_t awakening_timestamp = timer_ticks() + ticks;//calculate the timestamp that the tick needs to awaken after
+  int64_t awakening_timestamp = timer_ticks() + ticks - 1;//calculate the timestamp that the tick needs to awaken after. The "-1" part is important
 
   //NOTE: in the time between calculating the awakening timestamp above and disabling interrupts below, an interrupt could occur. I believe that would be fine because notjhing is happening that needs to be atomic between. Even if it causes the thread to be put on hold any amount of time, the process will still work fine.
   //      i.e. it needs to wait 10 ticks but then an interrupt causes it to be delayed by 20 ticks. This function will still add it to the timer sleep queue and timer interrupt which checks the queue during it's set frequency will notice. So long as the frequency is enough it should be fine
@@ -122,25 +123,38 @@ void timer_sleep(int64_t ticks)
   enum intr_level old_level = intr_disable();
 
   //assign a timestamp to awaken after and then put the thread onto a special waiting queue
-  putThreadOnTimerQueue(awakening_timestamp);
+  putThreadOnTimerList(awakening_timestamp);
   //NOTE: to add elements and retrieve them from the Pintos list, you need to add a list_elem object to a struct that will hold what you want to store. Meaning that you will have a struct of some name with all your data to store that will also store the list_elem. When you store though, you MUST send in a pointer to the list_elem. You use list_entry() to retrieve what you stored
 
-  //put thethread to sleep
+  //put the thread to sleep
   thread_block();//thread_block() will make it so that it can only be awoken by thread_unblock(). That will be done in thread_unblock()
 
   //reenable interrupts by restoring the interrupt state from before
   intr_set_level(old_level);
 }
 
-//takes in the timestamp to awaken the thread after. Assumes you want to put the current thread to sleep
-void putThreadOnTimerQueue(int64_t awakening_timestamp) {//NOTE: assumes that the timer sleep queue was initialized already (in timer_init() as of 2/25/2026)
-  struct sleepQueueElement *element = palloc_get_page(0);//malloc(sizeof *element);//create the element. Do like this because when the function ends, the element's data will be removed if it is made on this function's stack
-  element->timestampToWakeAfter = awakening_timestamp;//assign the timestamp
-  element->sleepingThread = thread_current();//assign the current thread
+bool lowerSleepTime(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED) {
+  struct sleepQueueElement *first_data = list_entry(first, struct sleepQueueElement, positionIndex);
+  struct sleepQueueElement *second_data = list_entry(second, struct sleepQueueElement, positionIndex);
 
-  //send in the timer sleep queue and the list_elem of element by reference to add to the end because are implementing list as a queue
-  list_push_back(&timerSleepQueue, &(element->positionIndex));
-  sleepQueueSize++;
+  //use "<=" to keep order for equal timestamps
+  return first_data->timestampToWakeAfter <= second_data->timestampToWakeAfter;
+}
+
+//takes in the timestamp to awaken the thread after. Assumes you want to put the current thread to sleep
+void putThreadOnTimerList(int64_t awakening_timestamp) {//NOTE: assumes that the timer sleep queue was initialized already (in timer_init() as of 2/25/2026)
+  struct sleepQueueElement *newElement = palloc_get_page(0);//malloc(sizeof *element);//create the element. Do like this because when the function ends, the element's data will be removed if it is made on this function's stack
+    if (!newElement)
+      PANIC("timer_sleep(): failed allocation");
+  
+  newElement->timestampToWakeAfter = awakening_timestamp;//assign the timestamp
+  newElement->sleepingThread = thread_current();//assign the current thread
+
+  //get the first entry in the list
+  struct list_elem *entry = list_begin(&timerSleepList);//get the first thread in the queue and remove it from the queue
+  // struct sleepQueueElement *element = list_entry(entry, struct sleepQueueElement, positionIndex);//takes in the pointer to the element stored in the queue, what data structure to convert it to, and the name of the list_elem variable within the struct that holds it
+
+  list_insert_ordered(&timerSleepList, &newElement->positionIndex, lowerSleepTime, NULL);
 }
 
 /** Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -220,29 +234,22 @@ static void timer_interrupt (struct intr_frame *args UNUSED)
   thread_tick();
 
   //below is the process for waking up sleeping timer threads. Since are in an interrupt handler, interrupts are disabled already
-  int elementsToCheck = sleepQueueSize;
 
-  //while have not yet looked at every thread in the queue0
-  while (elementsToCheck > 0) {
-    struct list_elem *entry = list_pop_front(&timerSleepQueue);//get the first thread in the queue and remove it from the queue
+  //while there are still threads in the sleep list
+  while (!list_empty(&timerSleepList)) {
+    //grab the element at the front of the list
+    struct list_elem *entry = list_begin(&timerSleepList);//get the first thread in the queue and remove it from the queue
     struct sleepQueueElement *element = list_entry(entry, struct sleepQueueElement, positionIndex);//takes in the pointer to the element stored in the queue, what data structure to convert it to, and the name of the list_elem variable within the struct that holds it
 
-    //if the timestamp to awaken the timer after is less than the number of ticks passed
-    if (ticks >= element->timestampToWakeAfter) {
-      //the thread should awaken
-      thread_unblock(element->sleepingThread);//wake up the thread
-      palloc_free_page(element);//free(element);//free up the memory of element because it was created with the sole purpose of storing tracking info for timed sleep. Since it is not being added back in, it is no longer needed. Free it to prevent memory leak
-      sleepQueueSize--;//decrement the sleep queue size because the thread will not be added back in
-    }
-    else {//if the timestamp has not been passed
-      //put the thread back in
-      list_push_back(&timerSleepQueue, &(element->positionIndex));
-    }
+    //if the thread should stay asleep
+    if (element->timestampToWakeAfter > ticks)
+        break;//end the loop
 
-    elementsToCheck--;
+    //if got here then it should wake up
+    list_pop_front(&timerSleepList);//remove from the list
+    thread_unblock(element->sleepingThread);//wake up the thread
+    palloc_free_page(element);//free up the memory of element because it was created with the sole purpose of storing tracking info for timed sleep. Since it is not being added back in, it is no longer needed. Free it to prevent memory leak
   }
-
-  //by this point, the threads should be back in order barring threads removed from the queue
 }
 
 /** Returns true if LOOPS iterations waits for more than one timer
