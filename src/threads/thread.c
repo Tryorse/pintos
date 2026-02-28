@@ -238,8 +238,8 @@ static bool thread_priority_comparison(const struct list_elem *first, const stru
    be important: if the caller had disabled interrupts itself,
    it may expect that it can atomically unblock a thread and
    update other data. */
-void thread_unblock (struct thread *t) 
-{//NOTE: for project 1 5.2, need to make it use priority scheduling. Meaning, if a higher priority thread needs to be run then it will be run first
+void thread_unblock(struct thread *t) 
+{//NOTE: for project 1 5.2, Updated for priority scheduling. Meaning, if a higher priority thread needs to be run then it will be run first
   enum intr_level old_level;
 
   ASSERT (is_thread (t));//throw an error if a thead was not what was sent in
