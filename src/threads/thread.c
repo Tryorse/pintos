@@ -353,6 +353,7 @@ void thread_set_priority(int new_priority)//LOGIC: update the priority level of 
   if (list_empty(&ready_list) == false) {
     struct list_elem *currentFront = list_begin(&ready_list);
     struct thread *element = list_entry(currentFront, struct thread, elem);//NOTE: elem comes from the thread struct. It is a list_elem struct
+    //the first element should be the highest priority element if sorted for that. Assume so for priority scheduling
 
     //if the current front of the ready list has a higher priority than the thread that is currently running
     if (element->priority > current->priority) {
