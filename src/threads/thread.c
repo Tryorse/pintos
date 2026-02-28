@@ -202,6 +202,12 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  /* If the new thread has higher priority, then preempt */
+  if (t->priority > thread_current()->priority)//NOTE: this is important. Without this, the preempt test will fail if you have keep the thread_yield() in sema_up that I added because it will cause a printing duplication error
+  {
+    thread_yield();
+  }
+
   return tid;
 }
 

@@ -143,7 +143,8 @@ void sema_up(struct semaphore *sema)
   intr_set_level (old_level);
 
   if (yield_to_CPU)
-    thread_yield();
+    if (!intr_context()) 
+      thread_yield();
 }
 
 static void sema_test_helper (void *sema_);
