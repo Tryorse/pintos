@@ -70,6 +70,7 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+static bool thread_priority_comparison(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED);
 
 /** Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -220,6 +221,15 @@ thread_block (void)
   schedule ();
 }
 
+//take in two list elements that represent position of threads in the list and return a boolean based on their priorities
+static bool thread_priority_comparison(const struct list_elem *first, const struct list_elem *second, void *aux UNUSED)
+{
+  struct thread *first_data = list_entry(first, struct thread, elem);
+  struct thread *second_data = list_entry(second, struct thread, elem);
+
+  return first_data->priority > second_data->priority;//use the higher priority thread first
+}
+
 /** Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
    make the running thread ready.)
@@ -228,18 +238,18 @@ thread_block (void)
    be important: if the caller had disabled interrupts itself,
    it may expect that it can atomically unblock a thread and
    update other data. */
-void
-thread_unblock (struct thread *t) 
-{
+void thread_unblock (struct thread *t) 
+{//NOTE: for project 1 5.2, need to make it use priority scheduling. Meaning, if a higher priority thread needs to be run then it will be run first
   enum intr_level old_level;
 
-  ASSERT (is_thread (t));
+  ASSERT (is_thread (t));//throw an error if a thead was not what was sent in
 
-  old_level = intr_disable ();
-  ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
-  t->status = THREAD_READY;
-  intr_set_level (old_level);
+  old_level = intr_disable();//disable interrupts and save what the original state was
+  ASSERT(t->status == THREAD_BLOCKED);//throw an error if the thread is not blocked
+  // list_push_back (&ready_list, &t->elem);//this works fine but it does not do ordered
+  list_insert_ordered(&ready_list, &t->elem, thread_priority_comparison, NULL);//this uses a comparison function to allow for priority insertion. The higher the priority, the earlier it is
+  t->status = THREAD_READY;//set the thread to ready status
+  intr_set_level(old_level);//reenable interrupts
 }
 
 /** Returns the name of the running thread. */
@@ -298,9 +308,8 @@ thread_exit (void)
 
 /** Yields the CPU.  The current thread is not put to sleep and
    may be scheduled again immediately at the scheduler's whim. */
-void
-thread_yield (void) 
-{
+void thread_yield(void) 
+{//for project 1 5.2, need to make it work for priority scheduling
   struct thread *cur = thread_current ();
   enum intr_level old_level;
   
@@ -308,10 +317,10 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    list_insert_ordered(&ready_list, &cur->elem, thread_priority_comparison, NULL);// list_push_back (&ready_list, &cur->elem);
   cur->status = THREAD_READY;
-  schedule ();
-  intr_set_level (old_level);
+  schedule();
+  intr_set_level(old_level);
 }
 
 /** Invoke function 'func' on all threads, passing along 'aux'.
@@ -332,10 +341,24 @@ thread_foreach (thread_action_func *func, void *aux)
 }
 
 /** Sets the current thread's priority to NEW_PRIORITY. */
-void
-thread_set_priority (int new_priority) 
-{
-  thread_current ()->priority = new_priority;
+void thread_set_priority(int new_priority)//LOGIC: update the priority level of the current thread. Then if the list has entries and the thread that is first in the ready list (assuming that the priority sorting makes the higher priority threads earlier in the list) has a lower priority than the current thread, yield to the CPU so that the scheduler can change to run the new highest priority thread. Essentially, after changing the priority of the current thread chec if it is lower than the highest priority thread in the ready list. If so, then the thread in that list needs to preempt it and run in it's place.
+{//for project 1. NOTE: synch.c has updates for project 1 too
+  // thread_current()->priority = new_priority;
+  
+  //grab the currently running thread and set it's priority to the new one that was sent in
+  struct thread *current = thread_current();
+  current->priority = new_priority;
+
+  //if the list of ready threads is not empty
+  if (list_empty(&ready_list) == false) {
+    struct list_elem *currentFront = list_begin(&ready_list);
+    struct thread *element = list_entry(currentFront, struct thread, elem);//NOTE: elem comes from the thread struct. It is a list_elem struct
+
+    //if the current front of the ready list has a higher priority than the thread that is currently running
+    if (element->priority > current->priority) {
+      thread_yield();
+    }
+  }
 }
 
 /** Returns the current thread's priority. */
