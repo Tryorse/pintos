@@ -120,8 +120,7 @@ thread_start (void)
 
 /** Called by the timer interrupt handler at each timer tick.
    Thus, this function runs in an external interrupt context. */
-void
-thread_tick (void) 
+void thread_tick (void) 
 {
   struct thread *t = thread_current ();
 
@@ -135,9 +134,9 @@ thread_tick (void)
   else
     kernel_ticks++;
 
-  /* Enforce preemption. */
-  if (++thread_ticks >= TIME_SLICE)
-    intr_yield_on_return ();
+  //enforce the thread preemption
+  if (++thread_ticks >= TIME_SLICE)//NOTE: if not here, priority scheduling could cause an issue where a process gets interrupted part way. I.e. print statement could start and get interrupted and then start oer again but on the same line and leave you with a result that has a duplicated segment
+    intr_yield_on_return();
 }
 
 /** Prints thread statistics. */

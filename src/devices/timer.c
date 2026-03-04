@@ -37,7 +37,7 @@ void timer_sleep (int64_t ticks);
 
 //the elements will be a custom struct that holds a pointer to the thread to be run and an int that acts as a timestamp for how long to wait. (It will be calculated by adding the ticks to wait to the current timestamp) 
 struct list timerSleepList;//the list that will hold the threads that need to sleep for a time. It needs to be ordered with the shortest waits being earlier
-int sleepListSize;
+// int sleepListSize;
 
 /** Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -228,7 +228,7 @@ timer_print_stats (void)
 }
 
 /** Timer interrupt handler. */
-static void timer_interrupt (struct intr_frame *args UNUSED)
+static void timer_interrupt(struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick();

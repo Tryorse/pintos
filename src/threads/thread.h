@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "synch.h"
 
 /** States in a thread's life cycle. */
 enum thread_status
@@ -88,9 +89,11 @@ struct thread
     char name[16];                      /**< Name (for debugging purposes). */
     uint8_t *stack;                     /**< Saved stack pointer. */
     int priority;                       /**< Priority. */
+    int originalPriority;//restore after the thread finishes
     struct list_elem allelem;           /**< List element for all threads list. */
 
-   //  int ticksToSleepFor;//how many ticks that it should sleep for. As of 2/25/2026, I have only made it so that timer_interrupt uses it so it should not interfere with any test cases
+    struct lock lock_being_waited_on;//the lock that is being waited on. This is for priority donation
+    struct list donors;//the threads that are donating their priority to this one
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /**< List element. */
