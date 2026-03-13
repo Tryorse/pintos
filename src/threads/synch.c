@@ -127,6 +127,9 @@ void sema_up(struct semaphore *sema)
 
   old_level = intr_disable ();
   if (!list_empty(&sema->waiters)) {
+    //sort the semaphore's list of waiters based on the priority. Put the higher priority threads at the front of the list
+    list_sort(&sema->waiters, thread_priority_comparison, NULL);
+    
     struct list_elem *first_entry = list_pop_front(&sema->waiters);//grab the first entry in the semaphore's waiting list and remove it from the list
     struct thread *thread = list_entry(first_entry, struct thread, elem);//grab the value indicated by that list element
 
@@ -139,12 +142,13 @@ void sema_up(struct semaphore *sema)
   //from the old non-priority implementation. Went in the above if statement
   // thread_unblock (list_entry (list_pop_front (&sema->waiters), struct thread, elem));
   
+  //free up the semaphore by incrementing it's value
   sema->value++;
-  intr_set_level (old_level);
+  intr_set_level(old_level);//reenable interrupts
 
-  if (yield_to_CPU)
-    if (!intr_context()) 
-      thread_yield();
+  if (yield_to_CPU)//if should yield to the CPU
+    if (!intr_context())
+      thread_yield();//yield to the CPU
 }
 
 static void sema_test_helper (void *sema_);
