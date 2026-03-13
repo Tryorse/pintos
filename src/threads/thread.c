@@ -393,6 +393,41 @@ thread_get_priority (void)
   return thread_current ()->priority;
 }
 
+//donate priority recursively along lock holders
+void thread_donate_priority(struct thread *t) {
+  //loop while the thread pointer is waiting on a lock 
+  while (t->lock_being_waited_on != NULL) {
+    //get the data of the thread that is holding the lock that is being waited on
+    struct thread *holder = t->lock_being_waited_on->holder;
+    if (holder == NULL)
+      break;
+
+    //if the holder's priority is less than that of the thread being pointed to be "t"
+    if (holder->priority < t->priority)
+      holder->priority = t->priority;//set it's priority to "t"'s priority
+    else
+      break;//the holder already has an equal or higher priority
+
+    t = holder;
+  }
+}
+
+//donate the thread's priority to the holder of a lock or semaphore
+void sema_donate_priority(struct semaphore *sema) {
+    if (!list_empty(&sema->waiters)) {
+        struct thread *current = thread_current();
+        struct list_elem *e;
+
+        // Go through all threads waiting on this semaphore
+        for (e = list_begin(&sema->waiters); e != list_end(&sema->waiters); e = list_next(e)) {
+            struct thread *t = list_entry(e, struct thread, elem);
+            if (t->lock_being_waited_on != NULL) {
+                thread_donate_priority(t);
+            }
+        }
+    }
+}
+
 /** Sets the current thread's nice value to NICE. */
 void
 thread_set_nice (int nice UNUSED) 
