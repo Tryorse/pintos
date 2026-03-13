@@ -224,46 +224,58 @@ void lock_acquire(struct lock *lock)
   // lock->holder = thread_current ();
 
   //priority donation compliant implementation
-  struct thread *current = thread_current();//grab the current thread
+  //grab the current thread
+  struct thread *current = thread_current();
 
-  //save the lock that is currently being waited on
-  if (lock->holder != NULL)
+  //if the lock is being held
+  if (lock->holder != NULL) 
   {
+    //set current thread to be waiting on the lock but not as the thread holding it 
     current->lock_being_waited_on = lock;
 
+    //get the holder of the lock
     struct thread *holder = lock->holder;
 
-    //while there is a thread holding the lock and the number of loops is less than 8
-    int depth = 0;
-    int loopGuard = 20;//use a max loops value to protect against infinite loops
-    while (holder != NULL && depth < loopGuard)
+    //recursively donate priority by looping while there is a holder of the lock and the current thread's priority is greater than theirs
+    while (holder != NULL && current->priority > holder->priority)//this way, the current thread can make sure to donate to free up all the necessary threads faster. This is necessary because priority donations accumulate like a chain
     {
-      //if the needed (the holder of the lock has less priority than the current thread), donate the current thread's priority to the thread holding the lock
-      if (holder->priority < current->priority)
-        holder->priority = current->priority;//set the holder's priority to be that of the current thread to donate the current thread's priority
+      holder->priority = current->priority;//set the lock holder's priority to that of the current thread's
 
-      //if the thread is not holding the lock
-      if (!holder->lock_being_waited_on)
-        break;//end the loop early
-      
-      //grab the thread that was waiting on the current lock before the donation
-      holder = holder->lock_being_waited_on->holder;
-      
-      depth++;
+      //add the current thread to the donation list of the lock's holder if it is not already in there
+      if (!list_empty(&holder->donors))
+      {
+        bool already_in_donor_list = false;
+        for (struct list_elem *element = list_begin(&holder->donors); element != list_end(&holder->donors); element = list_next(element))//loop through the lock holder's donors
+        {
+          //if the current thread is a match for the current donor being looked at
+          struct thread *t = list_entry(element, struct thread, donor_elem);
+          if (t == current)
+          {
+            //end the loop because there is no need to add
+            already_in_donor_list = true;
+            break;
+          }
+        }
+
+        //if the current thread is not in the lock holder's list
+        if (!already_in_donor_list)
+            list_push_back(&holder->donors, &current->donor_elem);//add it to the list
+      }
+      else//if the thread holding the lock has no donors
+      {
+          list_push_back(&holder->donors, &current->donor_elem);//add the current thread into it
+      }
+
+      //if the holder is waiting on a lock
+      if (holder->lock_being_waited_on != NULL)
+        holder = holder->lock_being_waited_on->holder;//swap to the thread waiting on said lock
+      else
+        break;
     }
-
-    // //if the needed (the holder of the lock has less priority than the current thread), donate the current thread's priority to the thread holding the lock
-    // if (holder->priority < current->priority)
-    // {
-    //   holder->priority = current->priority;
-      // list_push_back(&holder->donors, &current->elem);
-    // }
   }
 
-  //wait until sema has a non-zero positive value and then decrement when that is the case
   sema_down(&lock->semaphore);
-
-  //give the lock to the current thread
+  current->lock_being_waited_on = NULL;
   lock->holder = current;
 }
 
@@ -301,41 +313,37 @@ void lock_release (struct lock *lock)
   // sema_up (&lock->semaphore);
 
   //priority donation compliant implementation
-  struct thread *current = thread_current();//get the current thread
-  struct list_elem *e = list_begin(&current->donors);//get the first element of the priority donation list
+  //grab the current thread
+  struct thread *current = thread_current();
 
-  //while waiting on the lock, remove the threads donating priority to the current thread from it's list/* Remove donors waiting on this lock */
-  while (e != list_end(&current->donors))
+  //remove the donors that have been waiting on the curren lock from the current thread's donor list
+  struct list_elem *element = list_begin(&current->donors);//get the first donating thread's list_elem
+  while (element != list_end(&current->donors))//loop while the thread is not the last thread in the list
   {
-    //parse the list element in to a pointer to the donating thread and grab the next element
-    struct thread *donor = list_entry(e, struct thread, elem);
-    struct list_elem *next = list_next(e);
+    struct list_elem *next = list_next(element);//grab the next element in the 
+    struct thread *donor = list_entry(element, struct thread, donor_elem);//parse the list_eleme into the thread it represents
 
-    //if the donating thread is waiting on the current lock
-    if (&donor->lock_being_waited_on == lock)
-      list_remove(e);//remove from the list
-
-    e = next;
+    //if the current lock is the lock that the donating thread is waiting on
+    if (donor->lock_being_waited_on == lock)
+      list_remove(&donor->donor_elem);//remove it from the list
+    
+    element = next;
   }
 
-  //revert the current thread's priority to it's original priority
-  current->priority = current->originalPriority;
-
-  //recalculate the biggest priority donation
-  if (!list_empty(&current->donors))
+  //recalculate the biggest priority donation. Use the original priority or the  highest remaining donor
+  current->priority = current->originalPriority;//set the priority back to the original
+  for (element = list_begin(&current->donors); element != list_end(&current->donors); element = list_next(element))//loop through list of donating threads
   {
-    //get the biggest priority donation in the list
-    struct list_elem *max = list_max(&current->donors, thread_priority_comparison, NULL);//use the thread_priority_comparison function from before
-
-    //parse the element representing the donor into a thread pointer
-    struct thread *biggestDonor = list_entry(max, struct thread, elem);
-
-    if (biggestDonor->priority > current->priority)
-      current->priority = biggestDonor->priority;
+    //get the data of the donating thread
+    struct thread *donor = list_entry(element, struct thread, donor_elem);
+ 
+    //if the donating thread's priority is greater than the current thread's priority (which was just reverted to it's original value)
+    if (donor->priority > current->priority)
+      current->priority = donor->priority;//set the priority to the new one
   }
 
   lock->holder = NULL;
-  sema_up(&lock->semaphore);
+  sema_up(&lock->semaphore);//free up the semaphore lock
 }
 
 /** Returns true if the current thread holds LOCK, false

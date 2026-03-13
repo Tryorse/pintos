@@ -357,9 +357,21 @@ void thread_set_priority(int new_priority)//LOGIC: update the priority level of 
   //update the original priority to be the new priority
   current->originalPriority = new_priority;
 
-  //if there is no thread currently donating
-  if (list_empty(&current->donors))
-    current->priority = new_priority;//set the priority of the current thread to be the new priority
+  //grab the current thread's original priority and use it as max priority
+  int max_priority = current->originalPriority;
+  struct list_elem *e;
+
+  //loop through each element of the current thread's donor list
+  for (e = list_begin(&current->donors); e != list_end(&current->donors); e = list_next(e)) {
+    struct thread *t = list_entry(e, struct thread, donor_elem);//get the data of the donating thread
+
+    //if the donor being looked at has higher priority
+    if (t->priority > max_priority)
+      max_priority = t->priority;//use it's priority as the higher priority
+  }
+
+  //set the current thread's priority to the new max priority
+  current->priority = max_priority;
 
   //if the list of ready threads is not empty
   if (list_empty(&ready_list) == false) {
