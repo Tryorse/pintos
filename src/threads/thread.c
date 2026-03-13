@@ -546,6 +546,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+  t->lock_being_waited_on = NULL;
 
   //for priority donation compliance
   t->originalPriority = priority;//save the original priority as the priority that was just set
