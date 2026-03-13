@@ -354,6 +354,13 @@ void thread_set_priority(int new_priority)//LOGIC: update the priority level of 
   struct thread *current = thread_current();
   current->priority = new_priority;
 
+  //update the original priority to be the new priority
+  current->originalPriority = new_priority;
+
+  //if there is no thread currently donating
+  if (list_empty(&current->donors))
+    current->priority = new_priority;//set the priority of the current thread to be the new priority
+
   //if the list of ready threads is not empty
   if (list_empty(&ready_list) == false) {
     struct list_elem *currentFront = list_begin(&ready_list);
@@ -492,6 +499,10 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+
+  //for priority donation compliance
+  t->originalPriority = priority;//save the original priority as the priority that was just set
+  list_init(&t->donors);//initialize the donating threads list
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
