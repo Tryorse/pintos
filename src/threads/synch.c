@@ -238,49 +238,6 @@ void lock_acquire(struct lock *lock)
 
     //donate priority of the current thread
     thread_donate_priority(current);
-
-    // //set current thread to be waiting on the lock but not as the thread holding it 
-    // current->lock_being_waited_on = lock;
-
-    // //get the holder of the lock
-    // struct thread *holder = lock->holder;
-
-    // //recursively donate priority by looping while there is a holder of the lock and the current thread's priority is greater than theirs
-    // while (holder != NULL && current->priority > holder->priority)//this way, the current thread can make sure to donate to free up all the necessary threads faster. This is necessary because priority donations accumulate like a chain
-    // {
-    //   holder->priority = current->priority;//set the lock holder's priority to that of the current thread's
-
-    //   //add the current thread to the donation list of the lock's holder if it is not already in there
-    //   if (!list_empty(&holder->donors))
-    //   {
-    //     bool already_in_donor_list = false;
-    //     for (struct list_elem *element = list_begin(&holder->donors); element != list_end(&holder->donors); element = list_next(element))//loop through the lock holder's donors
-    //     {
-    //       //if the current thread is a match for the current donor being looked at
-    //       struct thread *t = list_entry(element, struct thread, donor_elem);
-    //       if (t == current)
-    //       {
-    //         //end the loop because there is no need to add
-    //         already_in_donor_list = true;
-    //         break;
-    //       }
-    //     }
-
-    //     //if the current thread is not in the lock holder's list
-    //     if (!already_in_donor_list)
-    //         list_push_back(&holder->donors, &current->donor_elem);//add it to the list
-    //   }
-    //   else//if the thread holding the lock has no donors
-    //   {
-    //       list_push_back(&holder->donors, &current->donor_elem);//add the current thread into it
-    //   }
-
-    //   //if the holder is waiting on a lock
-    //   if (holder->lock_being_waited_on != NULL)
-    //     holder = holder->lock_being_waited_on->holder;//swap to the thread waiting on said lock
-    //   else
-    //     break;
-    // }
   }
 
   sema_down(&lock->semaphore);
@@ -332,8 +289,8 @@ void lock_release (struct lock *lock)
     struct list_elem *next = list_next(element);//grab the next element in the 
     struct thread *donor = list_entry(element, struct thread, donor_elem);//parse the list_eleme into the thread it represents
 
-    //if the current lock is the lock that the donating thread is waiting on or the donor is not waiting on a lock
-    if (donor->lock_being_waited_on == NULL || donor->lock_being_waited_on == lock)
+    //if the current lock is the lock that the donating thread is waiting on
+    if (donor->lock_being_waited_on == lock)
       list_remove(&donor->donor_elem);//remove it from the list
     
     element = next;
