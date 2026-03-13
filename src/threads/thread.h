@@ -92,7 +92,7 @@ struct thread
     int originalPriority;//restore after the thread finishes
     struct list_elem allelem;           /**< List element for all threads list. */
 
-    struct lock lock_being_waited_on;//the lock that is being waited on. This is for priority donation
+    struct lock* lock_being_waited_on;//the lock that is being waited on. This is for priority donation
     struct list donors;//the threads that are donating their priority to this one
 
     /* Shared between thread.c and synch.c. */
