@@ -90,6 +90,9 @@ struct thread
     uint8_t *stack;                     /**< Saved stack pointer. */
     int priority;                       /**< Priority. */
     int originalPriority;//restore after the thread finishes
+
+    int exitStatus;
+
     struct list_elem allelem;           /**< List element for all threads list. */
 
     struct lock* lock_being_waited_on;//the lock that is being waited on. This is for priority donation

@@ -13,8 +13,45 @@ syscall_init (void)
 }
 
 static void
-syscall_handler (struct intr_frame *f UNUSED) 
+syscall_handler (struct intr_frame *f) 
 {
-  printf ("system call!\n");
-  thread_exit ();
+  int syscall_num = *(int *)(f->esp);
+
+  switch (syscall_num)
+  {
+    case SYS_EXIT:
+    {
+      //grab the exit status from the stack pointer
+      int status = *(int *)(f->esp + 4);
+      thread_current()->exitStatus = status;//set the retrieved exit status
+      thread_exit();
+      break;
+    }
+    case SYS_WRITE:
+    {
+      //read the three arguments of the write(fd, buffer, size) syscall off of the user's stacks
+      int fd = *(int *)(f->esp + 4);
+      void *buffer = *(void **)(f->esp + 8);
+      unsigned size = *(unsigned *)(f->esp + 12);
+
+      //if the file descriptor (fd) is stdout
+      if (fd == 1)
+      {
+        //set up what needs to be printed
+        putbuf(buffer, size);
+        f->eax = size;
+      }
+      else
+      {
+        f->eax = -1;
+      }
+
+      break;
+    }
+
+    default:
+      thread_current()->exitStatus = -1;
+      thread_exit();
+      break;
+  }
 }

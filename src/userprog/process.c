@@ -38,8 +38,18 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  //Example: fn_copy = "echo hello world" -> strok_r() it with empty space as delimiter -> prog_name will hold "echo" and save_ptr will point to "hello world" and fn_copy will have a null terminating character where the empty space was
+
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  char *save_ptr;//necessary for strtok_r. Where strtok_r will continue to parse things to next time
+  char *prog_name = strtok_r(fn_copy, " ", &save_ptr);//parses the string by taking everything after the sent in token (empty space in this case)
+
+  //because of what was done to fn_copy, a new one must be made that can be sent to the thread
+  char *fn_copy_for_thread = palloc_get_page(0);
+  strlcpy(fn_copy_for_thread, file_name, PGSIZE);
+
+  tid = thread_create(prog_name, PRI_DEFAULT, start_process, fn_copy_for_thread);//create the thread with "echo" as it's name 
+  // tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);//OLD IMPLEMENTATION
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -54,11 +64,16 @@ start_process (void *file_name_)
   struct intr_frame if_;
   bool success;
 
+  //set the exit status of the current thread (the process to be run)
+  struct thread *cur = thread_current();
+  cur->exitStatus = 0; 
+
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
+  
   success = load (file_name, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
@@ -88,6 +103,11 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  //do some busy waiting for 5.1 to pass
+  int i;
+  for (i = 0; i < 1000000000; i++)
+    barrier ();
+
   return -1;
 }
 
@@ -97,6 +117,10 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+  //if the current thread has a page directory, then it is a user program. This is because since kernel processes only run in the kernel space, there is no need for a page directory. Thus, a thread with a page directory can be used to identify a user program                     //if the current thread's PCB (process cotnrol block) is not null, then that means it is a user process because kernel processes never need a PCB
+  if (cur->pagedir != NULL)
+      printf("%s: exit(%d)\n", cur->name, cur->exitStatus);//print out the exit message in accordance with the instructions
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -195,7 +219,7 @@ struct Elf32_Phdr
 #define PF_W 2          /**< Writable. */
 #define PF_R 4          /**< Readable. */
 
-static bool setup_stack (void **esp);
+static bool setup_stack (void **esp, int argc, char **argv);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -215,6 +239,22 @@ load (const char *file_name, void (**eip) (void), void **esp)
   bool success = false;
   int i;
 
+  //need to split the command string (i.e. echo hello string) into seperate strings or tokens to make it so that later, the ability to just grab the program name and later push will be had
+  char *fn_copy = palloc_get_page (0);
+  if (fn_copy == NULL)
+    return false;
+  
+    strlcpy (fn_copy, file_name, PGSIZE);
+
+  char *argv[64];
+  int argc = 0;
+  char *token, *save_ptr;
+  
+  for (token = strtok_r (fn_copy, " ", &save_ptr); token != NULL;
+       token = strtok_r (NULL, " ", &save_ptr))
+  argv[argc++] = token;
+
+  
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
@@ -222,10 +262,12 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
-  file = filesys_open (file_name);
+  file = filesys_open (argv[0]);//make it use only the program name (i.e. echo)
+  // file = filesys_open (file_name);//OLD IMPLEMENTATION
   if (file == NULL) 
     {
-      printf ("load: %s: open failed\n", file_name);
+      printf ("load: %s: open failed\n", argv[0]);
+      // printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
 
@@ -302,7 +344,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp))
+  // if (!setup_stack (esp))//OLD IMPLEMENTATION
+  if (!setup_stack (esp, argc, argv))//pass argument so that setup_stack can push them onto the user stack
     goto done;
 
   /* Start address. */
@@ -313,6 +356,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
  done:
   /* We arrive here whether the load is successful or not. */
   file_close (file);
+  palloc_free_page(fn_copy);//free up the fn_copy page that was made for argument passing earlier
   return success;
 }
 
@@ -427,7 +471,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /** Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp) 
+setup_stack (void **esp, int argc, char **argv) 
 {
   uint8_t *kpage;
   bool success = false;
@@ -441,6 +485,53 @@ setup_stack (void **esp)
       else
         palloc_free_page (kpage);
     }
+
+  //originally, it returned success at this point
+
+  //below builds the full argument layout on the user stack before returning. Necesary for the process to receive argc/argv when it starts to run
+  if (success == false)//if unsuccessful
+    return false;//reutrn not successful
+
+  //push the strings of the arguments while going from right to left and remembering their addresses. Right to left so that argv[0] is closest to PHYS_BASE so that things match the expected memory layout
+  char *arg_ptrs[64];
+  int i;
+  for (i = argc - 1; i >= 0; i--)
+    {
+      size_t len = strlen (argv[i]) + 1;
+      *esp -= len;
+      memcpy (*esp, argv[i], len);
+      arg_ptrs[i] = *esp;
+    }
+
+  //align the esp(stack pointer) dowe to the nearest multiple of 4 beause x86 requires that
+  *esp = (void *) ((uintptr_t)*esp & ~3);
+
+  /* 3. Null sentinel: argv[argc] = NULL.
+        The C standard requires argv[argc] to be a null pointer. */
+  //argv[argc] = NULL. The C language requires argv[argc] to be so
+  *esp -= 4;
+  *(uint32_t *)*esp = 0;
+
+  //push argv[i] pointers from right-to-left (the pointers to the strings that were pushed earlier)
+  for (i = argc - 1; i >= 0; i--)
+    {
+      *esp -= 4;
+      *(char **)*esp = arg_ptrs[i];
+    }
+
+  //push argv (a pointer to the first element of the argv array that was just built on the stack)
+  char **argv_addr = *esp;
+  *esp -= 4;
+  *(char ***)*esp = argv_addr;
+
+  //push argc (the number of arguments)
+  *esp -= 4;
+  *(int *)*esp = argc;
+
+  //push a fake return address of 0 since main() is called as a function which means it needs a return address on the stack even though t will never be used
+  *esp -= 4;
+  *(uint32_t *)*esp = 0;
+
   return success;
 }
 
