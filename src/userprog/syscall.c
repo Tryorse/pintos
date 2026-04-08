@@ -23,7 +23,7 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f) 
 {
-  //validate the stack pointer that is to be grabbeds
+  //validate the stack pointer that is to be grabbed
   validate_read(f->esp, 4);
   int syscall_num = *(int *)(f->esp);
 
@@ -51,7 +51,7 @@ syscall_handler (struct intr_frame *f)
 
       //make sure the buffer is valid
       validate_buffer(buffer, size);
-      f->eax = syscall_write(fd, buffer, size);
+      f->eax = syscall_write(fd, buffer, size);//eax is the register field
 
       break;
     }

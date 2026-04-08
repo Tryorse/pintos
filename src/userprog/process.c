@@ -135,7 +135,7 @@ process_wait (tid_t child_tid UNUSED)
   if (child == NULL)
     return -1;//stop waiting and return -1 exit status
 
-  //free up the semaphore
+  //decrement up the semaphore
   sema_down(&child->exit_sema);
 
   //grab the exit status of the child thread
@@ -284,15 +284,14 @@ load (const char *file_name, void (**eip) (void), void **esp)
   if (fn_copy == NULL)
     return false;
   
-    strlcpy (fn_copy, file_name, PGSIZE);
+  strlcpy (fn_copy, file_name, PGSIZE);
 
   char *argv[64];
   int argc = 0;
   char *token, *save_ptr;
   
-  for (token = strtok_r (fn_copy, " ", &save_ptr); token != NULL;
-       token = strtok_r (NULL, " ", &save_ptr))
-  argv[argc++] = token;
+  for (token = strtok_r (fn_copy, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr))
+    argv[argc++] = token;
 
   
   /* Allocate and activate page directory. */
@@ -543,11 +542,9 @@ setup_stack (void **esp, int argc, char **argv)
       arg_ptrs[i] = *esp;
     }
 
-  //align the esp(stack pointer) dowe to the nearest multiple of 4 beause x86 requires that
+  //align the esp(stack pointer) down to the nearest multiple of 4 beause x86 requires that
   *esp = (void *) ((uintptr_t)*esp & ~3);
 
-  /* 3. Null sentinel: argv[argc] = NULL.
-        The C standard requires argv[argc] to be a null pointer. */
   //argv[argc] = NULL. The C language requires argv[argc] to be so
   *esp -= 4;
   *(uint32_t *)*esp = 0;
