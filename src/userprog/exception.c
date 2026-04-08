@@ -148,6 +148,13 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
+   //if was caused by user access or the current thread is a user process (has a page directory)
+   if (user || thread_current()->pagedir != NULL)
+   {
+      thread_current()->exitStatus = -1;
+      thread_exit();
+   }
+
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */

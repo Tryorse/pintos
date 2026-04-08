@@ -26,7 +26,8 @@ static struct list ready_list;
 
 /** List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
-static struct list all_list;
+struct list all_list;
+// static struct list all_list;//OLD IMPLEMENTATION
 
 /** Idle thread. */
 static struct thread *idle_thread;
@@ -540,6 +541,9 @@ init_thread (struct thread *t, const char *name, int priority)
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
+
+  sema_init(&t->exit_sema, 0);
+  sema_init(&t->wait_sema, 0);
 }
 
 /** Allocates a SIZE-byte frame at the top of thread T's stack and

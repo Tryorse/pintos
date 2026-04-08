@@ -18,6 +18,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+extern struct list all_list;//tell the compiler that all_list exists though it is not in this file
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
@@ -103,12 +105,47 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  //do some busy waiting for 5.1 to pass
-  int i;
-  for (i = 0; i < 1000000000; i++)
-    barrier ();
+  //the previous way that used busy waiting as a temporary solution
+  // int i;
+  // for (i = 0; i < 1000000000; i++)
+  //   barrier ();
 
-  return -1;
+  // return -1;
+
+  struct thread *child = NULL;
+  struct list_elem *e;
+
+  //retrieve the actual thread data of the child by using its ID (the one sent in)
+  //loop through every element of all_list
+  for (e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e))
+  {
+    //get the thread at the current index is 
+    struct thread *t = list_entry(e, struct thread, allelem);
+    
+    //if the thread's ID matches the ID that was sent in
+    if (t->tid == child_tid)
+    {
+      //set child to be the thread and stop the loop
+      child = t;
+      break;
+    }
+  }
+
+  //if no child found
+  if (child == NULL)
+    return -1;//stop waiting and return -1 exit status
+
+  //free up the semaphore
+  sema_down(&child->exit_sema);
+
+  //grab the exit status of the child thread
+  int status = child->exitStatus;
+
+  //call sema_up() on the waiting semaphore
+  sema_up(&child->wait_sema);
+
+  //return the exit status of the child
+  return status;
 }
 
 /** Free the current process's resources. */
@@ -121,6 +158,9 @@ process_exit (void)
   //if the current thread has a page directory, then it is a user program. This is because since kernel processes only run in the kernel space, there is no need for a page directory. Thus, a thread with a page directory can be used to identify a user program                     //if the current thread's PCB (process cotnrol block) is not null, then that means it is a user process because kernel processes never need a PCB
   if (cur->pagedir != NULL)
       printf("%s: exit(%d)\n", cur->name, cur->exitStatus);//print out the exit message in accordance with the instructions
+
+  sema_up(&cur->exit_sema);
+  sema_down(&cur->wait_sema);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */

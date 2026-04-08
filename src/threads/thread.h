@@ -107,6 +107,10 @@ struct thread
     uint32_t *pagedir;                  /**< Page directory. */
 #endif
 
+    //for process_wait()
+    struct semaphore exit_sema;
+    struct semaphore wait_sema;
+
     /* Owned by thread.c. */
     unsigned magic;                     /**< Detects stack overflow. */
   };
